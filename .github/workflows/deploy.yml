@@ -37,7 +37,7 @@ jobs:
         set -e
 
         # Navigate to project directory (create if doesn't exist)
-        cd ~/django_project || mkdir ~/django_project && cd ~/django_project
+        cd ~/se-2024-team2 || mkdir ~/se-2024-team2 && cd ~/se-2024-team2
 
         # Pull latest code from GitHub
         git init  # If the project isn't already a git repo
