@@ -1,0 +1,96 @@
+name: Push-to-EC2
+
+# Trigger deployment only on push to main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Django and React to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the Repository
+        uses: actions/checkout@v2
+
+      - name: Deploy Files to EC2
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.HOST_DNS }}
+          REMOTE_USER: ${{ secrets.USERNAME }}
+          TARGET: ${{ secrets.TARGET_DIR }}
+
+      - name: Install and Configure Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST_DNS }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Update and install dependencies
+            sudo apt-get -y update
+            sudo apt-get -y install python3-pip python3-venv postgresql postgresql-contrib nginx nodejs npm
+
+            # PostgreSQL setup
+            sudo systemctl start postgresql
+            sudo systemctl enable postgresql
+
+            # Set up the PostgreSQL database
+            sudo -u postgres psql <<EOF
+            CREATE USER admin WITH PASSWORD 'admin123';
+            CREATE DATABASE campus_grocery_app_db;
+            GRANT ALL PRIVILEGES ON DATABASE campus_grocery_app_db TO admin;
+            EOF
+
+            # Backend setup
+            cd ${{ secrets.TARGET_DIR }}
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            # Run Django migrations and collect static files
+            python3 manage.py makemigrations
+            python3 manage.py migrate
+            python3 manage.py collectstatic --noinput
+
+            # Frontend setup
+            cd frontend
+            npm install
+            npm run build
+
+            # Move React build files to Django static directory
+            cd ..
+            cp -r frontend/build/* static/
+
+            # Restart Django (Gunicorn)
+            sudo systemctl restart gunicorn || sudo systemctl start gunicorn
+
+            # Configure Nginx for reverse proxy
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo bash -c 'cat > /etc/nginx/sites-available/django_project <<EOF
+            server {
+                listen 80;
+                server_name ${HOST_DNS};
+
+                location /static/ {
+                    alias ${{ secrets.TARGET_DIR }}/static/;
+                }
+
+                location / {
+                    proxy_pass http://127.0.0.1:8000;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                }
+            }
+            EOF'
+
+            sudo ln -s /etc/nginx/sites-available/django_project /etc/nginx/sites-enabled
+            sudo systemctl restart nginx
+
+            echo "Deployment Complete!"
