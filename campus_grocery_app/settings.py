@@ -35,13 +35,17 @@ DEBUG = True
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost",
-    "http://0.0.0.0",
-    "http://127.0.0.1"
+ALLOWED_HOSTS = [
+    "3.144.252.252",
+    "ec2-3-144-252-252.us-east-2.compute.amazonaws.com",
+    "localhost",
+    "127.0.0.1",
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    "http://3.144.252.252",
+    "http://ec2-3-144-252-252.us-east-2.compute.amazonaws.com",
+]
 
 # Application definition
 
